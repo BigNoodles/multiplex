@@ -3,12 +3,14 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 import os
+import subprocess
 import sys
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout, QSlider,
     QPushButton, QLabel, QFileDialog,
-    QMenu, QDialog, QDialogButtonBox
+    QMenu, QDialog, QDialogButtonBox,
+    QGridLayout, QInputDialog
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -17,6 +19,7 @@ from PySide6.QtGui import QAction
 
 
 class ComplainDialog(QDialog):
+    """graceful error handling dialog"""
     def __init__(self, message):
         super().__init__()
 
@@ -33,6 +36,7 @@ class ComplainDialog(QDialog):
     
 
 class ClickableVideoWidget(QVideoWidget):
+    """just a wrapper so the video surface sends click events"""
     clicked = Signal()
 
     def mousePressEvent(self, event):
@@ -41,13 +45,52 @@ class ClickableVideoWidget(QVideoWidget):
         super().mousePressEvent(event)
 
 
+class Multiplex(QMainWindow):
+    """basically a frame with a grid layout for 4 SimplePlayers"""
+
+    def __init__(self, sources_json: str = None):
+        super().__init__()
+
+        self.setWindowTitle("Get wrecked, plonker!")
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QGridLayout(central)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        layout.addWidget(SimplePlayer(), 0, 0)
+        layout.addWidget(SimplePlayer(), 0, 1)
+        layout.addWidget(SimplePlayer(), 1, 0)
+        layout.addWidget(SimplePlayer(), 1, 1)
+
+        self.showFullScreen()
+
+
+    def keyPressEvent(self, event):
+        """capture Escape key"""
+
+        if event.key() == Qt.Key_Escape:
+            self.escape_func()
+
+        return super().keyPressEvent(event)
+    
+
+    def escape_func(self):
+        """escape from fullscreen, if needed"""
+        if self.isFullScreen():
+            self.showMaximized()
+
+
 class SimplePlayer(QMainWindow):
+    """core of the code.  reusable video player
+    intended to be instantiated in X subwindows"""
+
     def __init__(self, source: str = None):
         super().__init__()
 
         # the window
-        self.setWindowTitle("Get wrecked, plonker!")
-        self.resize(960, 600)
+        # self.resize(960, 600)
 
         # core media objects
         self.player = QMediaPlayer()
@@ -100,19 +143,27 @@ class SimplePlayer(QMainWindow):
 
 
     def contextMenuEvent(self, e):
+        """right click anywhere in the player window"""
         open_file_action = QAction("Open File", self)
         open_file_action.triggered.connect(self.open_file)
-        open_url_action = QAction("Open URL", self)
-        open_url_action.triggered.connect(self.open_url)
+        find_stream_action = QAction("Find stream in website", self)
+        find_stream_action.triggered.connect(self.find_stream)
+        open_uri_action = QAction("Open raw URI stream", self)
+        open_uri_action.triggered.connect(self.open_uri)
 
         context = QMenu(self)
         context.addAction(open_file_action)
-        context.addAction(open_url_action)
+        context.addAction(find_stream_action)
+        context.addAction(open_uri_action)
         context.exec(e.globalPos())
     
 
-    # Helpers
+    # -----Helpers-----
+
     def complain(self, message):
+        """just a wrapper to instantiate one dialog object"""
+
+        # should this do anything else?  two lines of code is meh
         dlg = ComplainDialog(message)
         dlg.exec()
 
@@ -134,6 +185,7 @@ class SimplePlayer(QMainWindow):
 
     @staticmethod
     def format_time(ms: int) -> str:
+        """turn miliseconds into human readable"""
         s = ms // 1000
         m, s = divmod(s, 60)
         return f"{m}:{s:02d}"
@@ -150,9 +202,32 @@ class SimplePlayer(QMainWindow):
             self.load(path)
 
 
-    def open_url(self):
-        """this one's for digging a .m3u8 stream out of a webpage"""
-        pass
+    def find_stream(self):
+        """this one calls yt-dlp at command line and tries to find the stream URI hidden in some webpage"""
+        text, ok = QInputDialog.getText(self, 'Find stream', 'Enter a URL to dig a stream out of:')
+
+        if ok:
+            if not text.startswith("https://"):
+                self.complain(f"'{text}' doesn't seem to be a website")
+            else:
+                try:
+                    command_string = f"yt-dlp -g {text}"
+                    result = subprocess.run(command_string, capture_output=True, text=True)
+                    output = result.stdout.strip()
+                    self.load(output)
+                except Exception as ex:
+                    self.complain(f"Got an exception {str(ex)}")
+
+
+    def open_uri(self):
+        """this one's for loading a m3u8 stream from known URI'"""
+        text, ok = QInputDialog.getText(self, 'Open URI', 'Full URI of known m3u8 stream:')
+
+        if ok:
+            if not text.endswith("m3u8"):
+                self.complain(f"'{text}' doesn't seem to be a stream URI")
+            else:
+                self.load(text)
 
 
     def toggle_play(self):
@@ -189,10 +264,10 @@ def main():
 
     # application instance
     app = QApplication(sys.argv)
-    source = sys.argv[1] if len(sys.argv) > 1 else None
+    sources_json = sys.argv[1] if len(sys.argv) > 1 else None
 
     # create window
-    window = SimplePlayer(source)
+    window = Multiplex(sources_json)
     window.show()
 
     sys.exit(app.exec())
