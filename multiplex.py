@@ -220,7 +220,7 @@ class SimplePlayer(QMainWindow):
 
 
     def open_uri(self):
-        """this one's for loading a m3u8 stream from known URI'"""
+        """this one's for loading a m3u8 stream directly from known URI'"""
         text, ok = QInputDialog.getText(self, 'Open URI', 'Full URI of known m3u8 stream:')
 
         if ok:
