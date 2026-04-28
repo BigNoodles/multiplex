@@ -8,11 +8,11 @@ import sys
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout, QSlider,
-    QPushButton, QLabel, QFileDialog,
+    QLabel, QFileDialog,
     QMenu, QDialog, QDialogButtonBox,
     QGridLayout, QInputDialog
 )
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QAudio
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtCore import Qt, Signal, QUrl
 from PySide6.QtGui import QAction
@@ -98,7 +98,7 @@ class SimplePlayer(QMainWindow):
         # audio layer of the media widget
         self.audio = QAudioOutput()
         self.player.setAudioOutput(self.audio)
-        self.audio.setVolume(0.8)
+        self.audio.setVolume(self.log_volume(50))
 
         # video layer of the media widget
         self.video_widget = ClickableVideoWidget()
@@ -117,6 +117,14 @@ class SimplePlayer(QMainWindow):
         controls = QHBoxLayout()
         layout.addLayout(controls)
 
+        # volume bar
+        self.volume_bar = QSlider(Qt.Horizontal)
+        self.volume_bar.setMaximumWidth(75)
+        self.volume_bar.setRange(0, 100)
+        self.volume_bar.setValue(50)
+        self.volume_bar.setToolTip("Volume")
+        controls.addWidget(self.volume_bar)
+
         # scrub bar
         self.scrubber = QSlider(Qt.Horizontal)
         self.scrubber.setRange(0, 0)
@@ -133,6 +141,9 @@ class SimplePlayer(QMainWindow):
         # position changes
         self.player.positionChanged.connect(self.on_position_changed)
         self.player.durationChanged.connect(self.on_duration_changed)
+
+        # volume changes
+        self.volume_bar.sliderMoved.connect(self.adjust_volume)
 
         # scrubber drag
         self.scrubber.sliderMoved.connect(self.player.setPosition)
@@ -159,6 +170,16 @@ class SimplePlayer(QMainWindow):
     
 
     # -----Helpers-----
+    def log_volume(self, slider_value):
+        """did you know humans perceive volume logarithmically?"""
+        real_volume = QAudio.convertVolume(
+            slider_value * 0.01, # volume is 0 to 1, slider is 0 to 100
+            QAudio.VolumeScale.LogarithmicVolumeScale,
+            QAudio.VolumeScale.LinearVolumeScale
+        )
+
+        return real_volume
+    
 
     def complain(self, message):
         """just a wrapper to instantiate one dialog object"""
@@ -192,6 +213,12 @@ class SimplePlayer(QMainWindow):
     
     
     # Slots
+    def adjust_volume(self):
+        """connect volume slider to audio output widget"""
+        new_volume = self.volume_bar.value()
+        self.audio.setVolume(self.log_volume(new_volume))
+
+
     def open_file(self):
         """this one's for local video files on your machine"""
         path, _ = QFileDialog.getOpenFileName(
