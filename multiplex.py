@@ -223,7 +223,7 @@ class SimplePlayer(QMainWindow):
         """this one's for local video files on your machine"""
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Video",
-            filter="Video Files (*.mp4 *.mkv *.avi *.mov *.m3u8 *.ts);;All Files (*)"
+            filter="Video Files (*.mp4 *.mkv *.avi *.mov *.m3u8 *.ts *m4v);;All Files (*)"
         )
         if path:
             self.load(path)
